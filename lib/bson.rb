@@ -6,10 +6,16 @@ MINIMUM_BSON_EXT_VERSION = "1.2.rc0"
 
 module BSON
   VERSION = "1.2.rc0"
+
+  if defined? Mongo::DEFAULT_MAX_BSON_SIZE
+    DEFAULT_MAX_BSON_SIZE = Mongo::DEFAULT_MAX_BSON_SIZE
+  else
+    DEFAULT_MAX_BSON_SIZE = 4 * 1024 * 1024
+  end
+
   def self.serialize(obj, check_keys=false, move_id=false)
     BSON_CODER.serialize(obj, check_keys, move_id)
   end
-
 
   def self.deserialize(buf=nil)
     BSON_CODER.deserialize(buf)
@@ -34,7 +40,7 @@ end
 
 if RUBY_PLATFORM =~ /java/
   jar_dir = File.join(File.dirname(__FILE__), '..', 'ext', 'java', 'jar')
-  require File.join(jar_dir, 'mongo-2.2.jar')
+  require File.join(jar_dir, 'mongo-2.4.jar')
   require File.join(jar_dir, 'bson-2.2.jar')
   require File.join(jar_dir, 'jbson.jar')
   require 'bson/bson_java'

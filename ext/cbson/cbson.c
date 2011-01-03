@@ -31,14 +31,14 @@
 #  define RSTRING_LEN(v) RSTRING(v)->len
 #endif
 #ifndef RSTRING_LENINT
-#  define RSTRING_LENINT(v) rb_long2int(RSTRING_LEN(v))
+#  define RSTRING_LENINT(v) (int)(RSTRING_LEN(v))
 #endif
 
 #ifndef RARRAY_LEN
 #  define RARRAY_LEN(v) RARRAY(v)->len
 #endif
 #ifndef RARRAY_LENINT
-#  define RARRAY_LENINT(v) rb_long2int(RARRAY_LEN(v))
+#  define RARRAY_LENINT(v) (int)(RARRAY_LEN(v))
 #endif
 
 #if HAVE_RUBY_ST_H
@@ -910,8 +910,9 @@ static VALUE objectid_generate(VALUE self)
     return oid;
 }
 
-static void method_update_max_bson_size(VALUE self, VALUE connection) {
+static VALUE method_update_max_bson_size(VALUE self, VALUE connection) {
     max_bson_size = FIX2INT(rb_funcall(connection, rb_intern("max_bson_size"), 0));
+    return INT2FIX(max_bson_size);
 }
 
 static VALUE method_max_bson_size(VALUE self) {
