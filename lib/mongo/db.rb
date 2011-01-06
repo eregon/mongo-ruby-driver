@@ -56,33 +56,33 @@ module Mongo
 
     # Instances of DB are normally obtained by calling Mongo#db.
     #
-    # @param [String] db_name the database name.
+    # @param [String] name the database name.
     # @param [Mongo::Connection] connection a connection object pointing to MongoDB. Note
     #   that databases are usually instantiated via the Connection class. See the examples below.
     #
-    # @option options [Boolean] :strict (False) If true, collections must exist to be accessed and must
+    # @option opts [Boolean] :strict (False) If true, collections must exist to be accessed and must
     #   not exist to be created. See DB#collection and DB#create_collection.
     #
-    # @option options [Object, #create_pk(doc)] :pk (Mongo::ObjectId) A primary key factory object,
+    # @option opts [Object, #create_pk(doc)] :pk (Mongo::ObjectId) A primary key factory object,
     #   which should take a hash and return a hash which merges the original hash with any primary key
     #   fields the factory wishes to inject. (NOTE: if the object already has a primary key,
     #   the factory should not inject a new key).
     #
-    # @option options [Boolean, Hash] :safe (false) Set the default safe-mode options
+    # @option opts [Boolean, Hash] :safe (false) Set the default safe-mode options
     #   propogated to Collection objects instantiated off of this DB. If no
     #   value is provided, the default value set on this instance's Connection object will be used. This
     #   default can be overridden upon instantiation of any collection by explicity setting a :safe value
     #   on initialization
-    # @option options [Integer] :cache_time (300) Set the time that all ensure_index calls should cache the command.
+    # @option opts [Integer] :cache_time (300) Set the time that all ensure_index calls should cache the command.
     #
     # @core databases constructor_details
-    def initialize(db_name, connection, options={})
-      @name       = Mongo::Support.validate_db_name(db_name)
+    def initialize(name, connection, opts={})
+      @name       = Mongo::Support.validate_db_name(name)
       @connection = connection
-      @strict     = options[:strict]
-      @pk_factory = options[:pk]
-      @safe       = options.has_key?(:safe) ? options[:safe] : @connection.safe
-      @cache_time = options[:cache_time] || 300 #5 minutes.
+      @strict     = opts[:strict]
+      @pk_factory = opts[:pk]
+      @safe       = opts.fetch(:safe, @connection.safe)
+      @cache_time = opts[:cache_time] || 300 #5 minutes.
     end
 
     # Authenticate with the given username and password. Note that mongod
@@ -208,8 +208,8 @@ module Mongo
     #
     # @return [Array<Mongo::Collection>]
     def collections
-      collection_names.map do |collection_name|
-        Collection.new(self, collection_name)
+      collection_names.map do |name|
+        Collection.new(name, self)
       end
     end
 
@@ -223,7 +223,7 @@ module Mongo
     def collections_info(coll_name=nil)
       selector = {}
       selector[:name] = full_collection_name(coll_name) if coll_name
-      Cursor.new(Collection.new(self, SYSTEM_NAMESPACE_COLLECTION), :selector => selector)
+      Cursor.new(Collection.new(SYSTEM_NAMESPACE_COLLECTION, self), :selector => selector)
     end
 
     # Create a collection.
@@ -233,52 +233,52 @@ module Mongo
     #
     # @param [String] name the name of the new collection.
     #
-    # @option options [Boolean] :capped (False) created a capped collection.
+    # @option opts [Boolean] :capped (False) created a capped collection.
     #
-    # @option options [Integer] :size (Nil) If +capped+ is +true+, specifies the maximum number of
+    # @option opts [Integer] :size (Nil) If +capped+ is +true+, specifies the maximum number of
     #   bytes for the capped collection. If +false+, specifies the number of bytes allocated
     #   for the initial extent of the collection.
     #
-    # @option options [Integer] :max (Nil) If +capped+ is +true+, indicates the maximum number of records 
+    # @option opts [Integer] :max (Nil) If +capped+ is +true+, indicates the maximum number of records
     #   in a capped collection.
     #
     # @raise [MongoDBError] raised under two conditions: either we're in +strict+ mode and the collection
     #   already exists or collection creation fails on the server.
     #
     # @return [Mongo::Collection]
-    def create_collection(name, options={})
+    def create_collection(name, opts={})
       # Does the collection already exist?
       if collection_names.include?(name)
         if strict?
           raise MongoDBError, "Collection #{name} already exists. Currently in strict mode."
         else
-          return Collection.new(self, name)
+          return Collection.new(name, self)
         end
       end
 
       # Create a new collection.
       oh = BSON::OrderedHash.new
       oh[:create] = name
-      doc = command(oh.merge(options || {}))
-      return Collection.new(self, name, :pk => @pk_factory) if ok?(doc)
+      doc = command(oh.merge(opts || {}))
+      return Collection.new(name, self, :pk => @pk_factory) if ok?(doc)
       raise MongoDBError, "Error creating collection: #{doc.inspect}"
     end
 
     # Get a collection by name.
     #
     # @param [String] name the collection name.
-    # @param [Hash] options any valid options that can me passed to Collection#new.
+    # @param [Hash] opts any valid options that can me passed to Collection#new.
     #
     # @raise [MongoDBError] if collection does not already exist and we're in +strict+ mode.
     #
     # @return [Mongo::Collection]
-    def collection(name, options={})
+    def collection(name, opts={})
       if strict? && !collection_names.include?(name)
         raise Mongo::MongoDBError, "Collection #{name} doesn't exist. Currently in strict mode."
       else
-        options[:safe] = options.has_key?(:safe) ? options[:safe] : @safe
-        options.merge!(:pk => @pk_factory) unless options[:pk]
-        Collection.new(self, name, options)
+        opts[:safe] = opts.fetch(:safe, @safe)
+        opts.merge!(:pk => @pk_factory) unless opts[:pk]
+        Collection.new(name, self, opts)
       end
     end
     alias_method :[], :collection
@@ -418,7 +418,7 @@ module Mongo
     def index_information(collection_name)
       sel  = {:ns => full_collection_name(collection_name)}
       info = {}
-      Cursor.new(Collection.new(self, SYSTEM_INDEX_COLLECTION), :selector => sel).each do |index|
+      Cursor.new(Collection.new(SYSTEM_INDEX_COLLECTION, self), :selector => sel).each do |index|
         info[index['name']] = index
       end
       info
@@ -558,7 +558,7 @@ module Mongo
     #
     # @return [Array] a list of documents containing profiling information.
     def profiling_info
-      Cursor.new(Collection.new(self, DB::SYSTEM_PROFILE_COLLECTION), :selector => {}).to_a
+      Cursor.new(Collection.new(SYSTEM_PROFILE_COLLECTION, self), :selector => {}).to_a
     end
 
     # Validate a named collection.
@@ -581,7 +581,7 @@ module Mongo
     private
 
     def system_command_collection
-      Collection.new(self, SYSTEM_COMMAND_COLLECTION)
+      Collection.new(SYSTEM_COMMAND_COLLECTION, self)
     end
   end
 end
