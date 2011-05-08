@@ -55,6 +55,7 @@ module Mongo
       @chunks       = chunks
       @filename     = filename
       @mode         = mode
+      opts          = opts.dup
       @query        = opts.delete(:query) || {}
       @query_opts   = opts.delete(:query_opts) || {}
       @fs_name      = opts.delete(:fs_name) || Grid::DEFAULT_FS_NAME
@@ -316,21 +317,18 @@ module Mongo
       chunk
     end
 
-    def last_chunk_number
-      (@file_length / @chunk_size).to_i
-    end
-
     # Read a file in its entirety.
     def read_all
       buf = ''
       if @current_chunk
         buf << @current_chunk['data'].to_s
-        while chunk = get_chunk(@current_chunk['n'] + 1)
-          buf << chunk['data'].to_s
-          @current_chunk = chunk
+        while buf.size < @file_length
+          @current_chunk = get_chunk(@current_chunk['n'] + 1)
+          break if @current_chunk.nil?
+          buf << @current_chunk['data'].to_s
         end
+        @file_position = @file_length
       end
-      @file_position = @file_length
       buf
     end
 
@@ -413,6 +411,7 @@ module Mongo
 
     # Initialize the class for writing a file.
     def init_write(opts)
+      opts           = opts.dup
       @files_id      = opts.delete(:_id) || BSON::ObjectId.new
       @content_type  = opts.delete(:content_type) || (defined? MIME) && get_content_type || DEFAULT_CONTENT_TYPE
       @chunk_size    = opts.delete(:chunk_size) || DEFAULT_CHUNK_SIZE
